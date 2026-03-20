@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NexWA — Developer Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#06060f;--surface:#0d0d1c;--surface2:#131326;--surface3:#1a1a2e;--border:#1c1c34;--accent:#00a884;--accent2:#25d366;--text:#e9edef;--text-muted:#5a5a7a;--danger:#f15c6d;--warning:#ffb547;--success:#00c97d;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;overflow:hidden;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;display:flex;flex-direction:column;}
+  ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+
+  .topbar{display:flex;align-items:center;gap:16px;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
+  .logo{font-size:18px;font-weight:700;color:var(--accent2);}
+  .dev-badge{padding:4px 12px;border-radius:20px;background:rgba(0,168,132,0.2);border:1px solid rgba(0,168,132,0.4);font-size:12px;color:var(--accent);font-weight:700;}
+  .spacer{flex:1;}
+  .logout-btn{padding:8px 16px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);font-size:13px;cursor:pointer;transition:.2s;}
+  .logout-btn:hover{border-color:var(--danger);color:var(--danger);}
+
+  .layout{display:flex;flex:1;overflow:hidden;}
+
+  /* SIDEBAR */
+  .nav-sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);padding:16px 0;flex-shrink:0;}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:11px 20px;cursor:pointer;font-size:14px;color:var(--text-muted);transition:.15s;border-left:3px solid transparent;}
+  .nav-item:hover{background:var(--surface2);color:var(--text);}
+  .nav-item.active{background:var(--surface2);color:var(--accent2);border-left-color:var(--accent2);}
+  .nav-icon{font-size:16px;width:20px;}
+
+  /* MAIN */
+  .main{flex:1;overflow-y:auto;padding:24px;}
+
+  /* STATS */
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:24px;}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;gap:12px;align-items:center;}
+  .stat-icon{font-size:28px;}
+  .stat-value{font-size:24px;font-weight:700;}
+  .stat-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;}
+
+  /* SECTION */
+  .section{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:20px;overflow:hidden;}
+  .section-header{padding:14px 20px;background:var(--surface2);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
+  .section-title{font-size:15px;font-weight:600;}
+  .section-body{padding:16px;}
+
+  /* TABLE */
+  .data-table{width:100%;border-collapse:collapse;}
+  .data-table th{padding:10px 14px;text-align:left;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);}
+  .data-table td{padding:12px 14px;font-size:13px;border-bottom:1px solid rgba(28,28,52,0.5);}
+  .data-table tr:last-child td{border-bottom:none;}
+  .data-table tr:hover td{background:var(--surface2);}
+  .badge{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+  .badge-user{background:rgba(83,156,221,0.15);color:#539cdd;}
+  .badge-banned{background:rgba(241,92,109,0.15);color:var(--danger);}
+  .badge-pending{background:rgba(255,181,71,0.15);color:var(--warning);}
+  .badge-resolved{background:rgba(0,201,125,0.15);color:var(--success);}
+
+  /* FORM */
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .form-group{display:flex;flex-direction:column;gap:6px;}
+  .form-group.full{grid-column:1/-1;}
+  .form-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;}
+  .form-input{padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;transition:.2s;}
+  .form-input:focus{border-color:var(--accent);}
+  .form-textarea{padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;resize:vertical;min-height:80px;transition:.2s;}
+  .form-textarea:focus{border-color:var(--accent);}
+  .submit-btn{padding:11px 20px;border-radius:10px;background:var(--accent);border:none;color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;}
+  .submit-btn:hover{background:var(--accent2);}
+  .success-msg{color:var(--success);font-size:13px;display:none;margin-top:8px;}
+  .success-msg.show{display:block;}
+
+  /* ACTION BTNS */
+  .act-btn{padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid;transition:.15s;font-weight:500;}
+  .btn-ban{background:rgba(241,92,109,0.1);border-color:rgba(241,92,109,0.3);color:var(--danger);}
+  .btn-ban:hover{background:var(--danger);color:#fff;}
+  .btn-unban{background:rgba(0,201,125,0.1);border-color:rgba(0,201,125,0.3);color:var(--success);}
+  .btn-unban:hover{background:var(--success);color:#fff;}
+  .btn-resolve{background:rgba(83,156,221,0.1);border-color:rgba(83,156,221,0.3);color:#539cdd;}
+  .btn-resolve:hover{background:#539cdd;color:#fff;}
+
+  /* LOGIN */
+  .login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:24px;}
+  .login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px;width:360px;display:flex;flex-direction:column;gap:16px;box-shadow:0 0 60px rgba(0,168,132,.1);}
+  .login-title{font-size:22px;font-weight:700;text-align:center;}
+  .login-input{padding:12px 14px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;outline:none;width:100%;transition:.2s;}
+  .login-input:focus{border-color:var(--accent);}
+  .login-btn{padding:12px;border-radius:10px;background:var(--accent);border:none;color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:.2s;}
+  .login-btn:hover{background:var(--accent2);}
+  .login-logo{font-size:32px;font-weight:700;text-align:center;color:var(--accent2);}
+  .login-err{color:var(--danger);font-size:12px;text-align:center;min-height:16px;}
+  .dev-warn{text-align:center;padding:8px 14px;border-radius:8px;background:rgba(241,92,109,.1);border:1px solid rgba(241,92,109,.3);color:var(--danger);font-size:12px;font-weight:600;}
+
+  /* TOAST */
+  .toast{position:fixed;bottom:20px;right:20px;background:var(--surface2);border:1px solid var(--border);padding:10px 18px;border-radius:12px;font-size:13px;z-index:100;opacity:0;pointer-events:none;transition:.3s;}
+  .toast.show{opacity:1;}
+
+  /* APPEAL DETAIL */
+  .appeal-msg{background:var(--surface2);border-radius:8px;padding:12px;font-size:13px;color:var(--text);line-height:1.5;max-width:320px;white-space:pre-wrap;}
+</style>
+</head>
+<body>
+
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-logo">NexWA Dev</div>
+  <div class="login-card">
+    <div class="login-title">🔐 Developer Login</div>
+    <div class="dev-warn">⚠️ Akses Khusus Developer</div>
+    <input class="login-input" id="devEmail" type="email" placeholder="Email developer">
+    <input class="login-input" id="devPass" type="password" placeholder="Password">
+    <div class="login-err" id="loginErr"></div>
+    <button class="login-btn" onclick="devLogin()">Masuk</button>
+  </div>
+</div>
+
+<div class="topbar">
+  <div class="logo">NexWA</div>
+  <div class="dev-badge">👨‍💻 DEVELOPER</div>
+  <div class="spacer"></div>
+  <button class="logout-btn" onclick="devLogout()">Keluar</button>
+</div>
+
+<div class="layout">
+  <div class="nav-sidebar">
+    <div class="nav-item active" onclick="showPage('dashboard',this)"><span class="nav-icon">📊</span>Dashboard</div>
+    <div class="nav-item" onclick="showPage('users',this)"><span class="nav-icon">👥</span>Pengguna</div>
+    <div class="nav-item" onclick="showPage('reports',this)"><span class="nav-icon">⚠️</span>Laporan</div>
+    <div class="nav-item" onclick="showPage('appeals',this)"><span class="nav-icon">📝</span>Banding</div>
+    <div class="nav-item" onclick="showPage('mailbox',this)"><span class="nav-icon">📬</span>Mailbox</div>
+    <div class="nav-item" onclick="showPage('broadcast',this)"><span class="nav-icon">📢</span>Broadcast</div>
+  </div>
+
+  <div class="main">
+
+    <!-- DASHBOARD -->
+    <div id="pageDashboard">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-icon">👥</div><div><div class="stat-value" id="stUsers">0</div><div class="stat-label">Total User</div></div></div>
+        <div class="stat-card"><div class="stat-icon">🚫</div><div><div class="stat-value" id="stBanned">0</div><div class="stat-label">Dibanned</div></div></div>
+        <div class="stat-card"><div class="stat-icon">⚠️</div><div><div class="stat-value" id="stReports">0</div><div class="stat-label">Laporan</div></div></div>
+        <div class="stat-card"><div class="stat-icon">📝</div><div><div class="stat-value" id="stAppeals">0</div><div class="stat-label">Banding</div></div></div>
+        <div class="stat-card"><div class="stat-icon">📢</div><div><div class="stat-value" id="stChannels">0</div><div class="stat-label">Channel</div></div></div>
+      </div>
+      <div class="section">
+        <div class="section-header"><div class="section-title">📝 Banding Terbaru</div></div>
+        <div class="section-body"><div id="recentAppeals">Memuat...</div></div>
+      </div>
+      <div class="section">
+        <div class="section-header"><div class="section-title">⚠️ Laporan Terbaru</div></div>
+        <div class="section-body"><div id="recentReports">Memuat...</div></div>
+      </div>
+    </div>
+
+    <!-- USERS -->
+    <div id="pageUsers" style="display:none">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">👥 Semua Pengguna</div>
+          <input class="form-input" id="userSearch" placeholder="Cari pengguna..." oninput="filterUserTable()" style="width:200px;padding:7px 12px;">
+        </div>
+        <div class="section-body" style="padding:0;overflow-x:auto;">
+          <table class="data-table">
+            <thead><tr><th>Nama</th><th>Username</th><th>Telepon</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody id="userTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- REPORTS -->
+    <div id="pageReports" style="display:none">
+      <div class="section">
+        <div class="section-header"><div class="section-title">⚠️ Laporan Pengguna</div></div>
+        <div class="section-body" style="padding:0;overflow-x:auto;">
+          <table class="data-table">
+            <thead><tr><th>Pelapor</th><th>Dilaporkan</th><th>Alasan</th><th>Tanggal</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody id="reportTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- APPEALS -->
+    <div id="pageAppeals" style="display:none">
+      <div class="section">
+        <div class="section-header"><div class="section-title">📝 Pengajuan Banding</div></div>
+        <div class="section-body" style="padding:0;overflow-x:auto;">
+          <table class="data-table">
+            <thead><tr><th>Pengguna</th><th>Nomor HP</th><th>Pesan Banding</th><th>Tanggal</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody id="appealTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAILBOX -->
+    <div id="pageMailbox" style="display:none">
+      <div class="section">
+        <div class="section-header"><div class="section-title">📬 Kirim Mailbox ke Pengguna</div></div>
+        <div class="section-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <div class="form-label">Pilih Pengguna</div>
+              <select class="form-input" id="mailTarget">
+                <option value="">-- Pilih pengguna --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <div class="form-label">Judul</div>
+              <input class="form-input" id="mailTitle" placeholder="Judul pesan...">
+            </div>
+            <div class="form-group full">
+              <div class="form-label">Isi Pesan</div>
+              <textarea class="form-textarea" id="mailContent" placeholder="Tulis pesan..."></textarea>
+            </div>
+            <div class="form-group full">
+              <div class="form-label">Link (opsional)</div>
+              <input class="form-input" id="mailLink" placeholder="https://...">
+            </div>
+          </div>
+          <button class="submit-btn" onclick="sendMailbox()" style="margin-top:14px">📨 Kirim</button>
+          <div class="success-msg" id="mailSuccess">✅ Mailbox terkirim!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BROADCAST -->
+    <div id="pageBroadcast" style="display:none">
+      <div class="section">
+        <div class="section-header"><div class="section-title">📢 Broadcast ke Semua Pengguna</div></div>
+        <div class="section-body">
+          <div style="background:rgba(255,181,71,0.1);border:1px solid rgba(255,181,71,0.2);border-radius:10px;padding:12px 16px;font-size:13px;color:var(--warning);margin-bottom:16px;">⚠️ Pesan akan dikirim ke SEMUA pengguna aktif.</div>
+          <div class="form-grid">
+            <div class="form-group full">
+              <div class="form-label">Judul Broadcast</div>
+              <input class="form-input" id="bcTitle" placeholder="Judul pengumuman...">
+            </div>
+            <div class="form-group full">
+              <div class="form-label">Isi Pesan</div>
+              <textarea class="form-textarea" id="bcContent" placeholder="Isi pengumuman untuk semua pengguna..."></textarea>
+            </div>
+            <div class="form-group full">
+              <div class="form-label">Link (opsional)</div>
+              <input class="form-input" id="bcLink" placeholder="https://...">
+            </div>
+          </div>
+          <button class="submit-btn" id="bcBtn" onclick="sendBroadcast()" style="margin-top:14px">📢 Kirim ke Semua</button>
+          <div class="success-msg" id="bcSuccess">✅ Broadcast terkirim!</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+const SUPABASE_URL = "ISI_URL_PROJECT"
+const SUPABASE_KEY = "ISI_ANON_KEY"
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+let devId = null, allUsers = [], allUsersMap = {}
+
+const esc = s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+const fmtDate = ts=>new Date(ts).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})
+
+function showToast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show')
+  setTimeout(()=>t.classList.remove('show'),2500)
+}
+
+// ── AUTH ──────────────────────────────────────────────────────
+async function init() {
+  const {data:{session}} = await supabase.auth.getSession()
+  if (session) {
+    const {data:prof} = await supabase.from('profiles').select('role').eq('id',session.user.id).maybeSingle()
+    if (prof?.role==='developer') {
+      devId=session.user.id; document.getElementById('loginOverlay').style.display='none'; startApp()
+    } else await supabase.auth.signOut()
+  }
+}
+
+window.devLogin = async () => {
+  const email=document.getElementById('devEmail').value.trim()
+  const pass=document.getElementById('devPass').value
+  const err=document.getElementById('loginErr'); err.textContent=''
+  if (!email||!pass){err.textContent='Isi semua field';return}
+  const {data,error}=await supabase.auth.signInWithPassword({email,password:pass})
+  if (error){err.textContent=error.message;return}
+  const {data:prof}=await supabase.from('profiles').select('role').eq('id',data.user.id).maybeSingle()
+  if (!prof||prof.role!=='developer'){err.textContent='Akun ini bukan Developer.';await supabase.auth.signOut();return}
+  devId=data.user.id; document.getElementById('loginOverlay').style.display='none'; startApp()
+}
+
+window.devLogout = async()=>{ await supabase.auth.signOut(); location.reload() }
+
+async function startApp() {
+  await loadStats(); await loadUsers()
+  loadDashboard()
+  subscribeAppeals()
+}
+
+async function loadStats() {
+  const [users,banned,reports,appeals,channels] = await Promise.all([
+    supabase.from('profiles').select('*',{count:'exact',head:true}).neq('role','developer'),
+    supabase.from('profiles').select('*',{count:'exact',head:true}).eq('banned',true),
+    supabase.from('reports').select('*',{count:'exact',head:true}),
+    supabase.from('appeals').select('*',{count:'exact',head:true}).eq('status','pending'),
+    supabase.from('channels').select('*',{count:'exact',head:true})
+  ])
+  document.getElementById('stUsers').textContent=users.count||0
+  document.getElementById('stBanned').textContent=banned.count||0
+  document.getElementById('stReports').textContent=reports.count||0
+  document.getElementById('stAppeals').textContent=appeals.count||0
+  document.getElementById('stChannels').textContent=channels.count||0
+}
+
+async function loadUsers() {
+  const {data}=await supabase.from('profiles').select('*').neq('role','developer').order('created_at',{ascending:false})
+  allUsers=data||[]
+  allUsersMap={}
+  allUsers.forEach(u=>allUsersMap[u.id]=u)
+  renderUserTable(allUsers)
+  // Populate mail target
+  const sel=document.getElementById('mailTarget')
+  sel.innerHTML='<option value="">-- Pilih pengguna --</option>'
+  allUsers.forEach(u=>{
+    const opt=document.createElement('option'); opt.value=u.id
+    opt.textContent=`${u.display_name||'?'} (${u.phone||u.username||u.id.substring(0,8)})`
+    sel.appendChild(opt)
+  })
+}
+
+function renderUserTable(users) {
+  const tbody=document.getElementById('userTableBody'); tbody.innerHTML=''
+  users.forEach(u=>{
+    const tr=document.createElement('tr')
+    tr.innerHTML=`
+      <td>${esc(u.display_name||'-')}</td>
+      <td>${esc(u.username?'@'+u.username:'-')}</td>
+      <td>${esc(u.phone||'-')}</td>
+      <td><span class="badge ${u.banned?'badge-banned':'badge-user'}">${u.banned?'Banned':'Aktif'}</span></td>
+      <td>
+        ${u.banned
+          ? `<button class="act-btn btn-unban" onclick="unbanUser('${u.id}')">✅ Unban</button>`
+          : `<button class="act-btn btn-ban" onclick="banUser('${u.id}')">🚫 Ban</button>`
+        }
+      </td>`
+    tbody.appendChild(tr)
+  })
+}
+
+window.filterUserTable = ()=>{
+  const q=document.getElementById('userSearch').value.toLowerCase()
+  renderUserTable(allUsers.filter(u=>(u.display_name||'').toLowerCase().includes(q)||(u.username||'').includes(q)||(u.phone||'').includes(q)))
+}
+
+window.banUser = async id=>{
+  const reason=prompt('Alasan ban:')
+  if (!reason) return
+  await supabase.from('profiles').update({banned:true,banned_reason:reason}).eq('id',id)
+  showToast('🚫 User dibanned'); loadStats(); loadUsers()
+}
+
+window.unbanUser = async id=>{
+  await supabase.from('profiles').update({banned:false,banned_reason:null}).eq('id',id)
+  showToast('✅ User di-unban'); loadStats(); loadUsers()
+}
+
+async function loadDashboard() {
+  // Recent appeals
+  const {data:ap}=await supabase.from('appeals').select('*').eq('status','pending').order('created_at',{ascending:false}).limit(5)
+  const apDiv=document.getElementById('recentAppeals')
+  if (!ap?.length){apDiv.innerHTML='<div style="color:var(--text-muted);font-size:13px">Tidak ada banding pending</div>';return}
+  apDiv.innerHTML=`<table class="data-table"><thead><tr><th>Pengguna</th><th>HP</th><th>Pesan</th><th>Tanggal</th><th>Aksi</th></tr></thead><tbody>${ap.map(a=>`<tr>
+    <td>${esc(allUsersMap[a.user_id]?.display_name||'-')}</td>
+    <td>${esc(a.phone||'-')}</td>
+    <td><div class="appeal-msg">${esc(a.message)}</div></td>
+    <td>${fmtDate(a.created_at)}</td>
+    <td><button class="act-btn btn-resolve" onclick="resolveAppeal('${a.id}','${a.user_id}')">✅ Terima</button>
+        <button class="act-btn btn-ban" style="margin-left:6px" onclick="rejectAppeal('${a.id}')">❌ Tolak</button></td>
+  </tr>`).join('')}</tbody></table>`
+
+  // Recent reports
+  const {data:rp}=await supabase.from('reports').select('*').eq('status','pending').order('created_at',{ascending:false}).limit(5)
+  const rpDiv=document.getElementById('recentReports')
+  if (!rp?.length){rpDiv.innerHTML='<div style="color:var(--text-muted);font-size:13px">Tidak ada laporan pending</div>';return}
+  rpDiv.innerHTML=`<table class="data-table"><thead><tr><th>Pelapor</th><th>Dilaporkan</th><th>Alasan</th><th>Aksi</th></tr></thead><tbody>${rp.map(r=>`<tr>
+    <td>${esc(allUsersMap[r.reporter_id]?.display_name||r.reporter_id?.substring(0,8))}</td>
+    <td>${esc(allUsersMap[r.reported_id]?.display_name||r.reported_id?.substring(0,8))}</td>
+    <td>${esc(r.reason)}</td>
+    <td><button class="act-btn btn-ban" onclick="banFromReport('${r.id}','${r.reported_id}')">🚫 Ban</button>
+        <button class="act-btn btn-resolve" style="margin-left:6px" onclick="dismissReport('${r.id}')">Abaikan</button></td>
+  </tr>`).join('')}</tbody></table>`
+}
+
+window.resolveAppeal = async (appealId, userId)=>{
+  if (!confirm('Unban pengguna ini dan terima banding?')) return
+  await supabase.from('appeals').update({status:'accepted'}).eq('id',appealId)
+  await supabase.from('profiles').update({banned:false,banned_reason:null}).eq('id',userId)
+  showToast('✅ Banding diterima, user di-unban'); loadStats(); loadDashboard(); loadUsers()
+}
+
+window.rejectAppeal = async id=>{
+  await supabase.from('appeals').update({status:'rejected'}).eq('id',id)
+  showToast('❌ Banding ditolak'); loadDashboard()
+}
+
+window.banFromReport = async (reportId, userId)=>{
+  const reason=prompt('Alasan ban:','Dilaporkan oleh pengguna')
+  if (!reason) return
+  await supabase.from('reports').update({status:'resolved'}).eq('id',reportId)
+  await supabase.from('profiles').update({banned:true,banned_reason:reason}).eq('id',userId)
+  showToast('🚫 User dibanned'); loadStats(); loadDashboard(); loadUsers()
+}
+
+window.dismissReport = async id=>{
+  await supabase.from('reports').update({status:'dismissed'}).eq('id',id)
+  showToast('Laporan diabaikan'); loadDashboard()
+}
+
+// PAGE LOADERS
+window.showPage = (page, el)=>{
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active')); el.classList.add('active')
+  document.querySelectorAll('[id^="page"]').forEach(p=>p.style.display='none')
+  document.getElementById('page'+page.charAt(0).toUpperCase()+page.slice(1)).style.display='block'
+  if (page==='users') loadUsers()
+  if (page==='reports') loadReportsPage()
+  if (page==='appeals') loadAppealsPage()
+  if (page==='dashboard') loadDashboard()
+}
+
+async function loadReportsPage() {
+  const {data}=await supabase.from('reports').select('*').order('created_at',{ascending:false})
+  const tbody=document.getElementById('reportTableBody'); tbody.innerHTML=''
+  ;(data||[]).forEach(r=>{
+    const tr=document.createElement('tr')
+    tr.innerHTML=`
+      <td>${esc(allUsersMap[r.reporter_id]?.display_name||r.reporter_id?.substring(0,8))}</td>
+      <td>${esc(allUsersMap[r.reported_id]?.display_name||r.reported_id?.substring(0,8))}</td>
+      <td>${esc(r.reason)}</td>
+      <td>${fmtDate(r.created_at)}</td>
+      <td><span class="badge ${r.status==='pending'?'badge-pending':'badge-resolved'}">${r.status}</span></td>
+      <td>${r.status==='pending'?`<button class="act-btn btn-ban" onclick="banFromReport('${r.id}','${r.reported_id}')">🚫 Ban</button>
+          <button class="act-btn btn-resolve" style="margin-left:6px" onclick="dismissReport('${r.id}')">Abaikan</button>`:'-'}</td>`
+    tbody.appendChild(tr)
+  })
+}
+
+async function loadAppealsPage() {
+  const {data}=await supabase.from('appeals').select('*').order('created_at',{ascending:false})
+  const tbody=document.getElementById('appealTableBody'); tbody.innerHTML=''
+  ;(data||[]).forEach(a=>{
+    const tr=document.createElement('tr')
+    tr.innerHTML=`
+      <td>${esc(allUsersMap[a.user_id]?.display_name||'-')}</td>
+      <td>${esc(a.phone||'-')}</td>
+      <td><div class="appeal-msg">${esc(a.message)}</div></td>
+      <td>${fmtDate(a.created_at)}</td>
+      <td><span class="badge ${a.status==='pending'?'badge-pending':a.status==='accepted'?'badge-resolved':'badge-banned'}">${a.status}</span></td>
+      <td>${a.status==='pending'?`<button class="act-btn btn-resolve" onclick="resolveAppeal('${a.id}','${a.user_id}')">✅ Terima</button>
+          <button class="act-btn btn-ban" style="margin-left:6px" onclick="rejectAppeal('${a.id}')">❌ Tolak</button>`:'-'}</td>`
+    tbody.appendChild(tr)
+  })
+}
+
+// MAILBOX
+window.sendMailbox = async()=>{
+  const uid=document.getElementById('mailTarget').value
+  const title=document.getElementById('mailTitle').value.trim()
+  const content=document.getElementById('mailContent').value.trim()
+  const link=document.getElementById('mailLink').value.trim()
+  if (!uid||!title||!content){showToast('Isi semua field');return}
+  await supabase.from('mailbox').insert({user_id:uid,title,content,link:link||null})
+  document.getElementById('mailTitle').value=''
+  document.getElementById('mailContent').value=''
+  document.getElementById('mailLink').value=''
+  document.getElementById('mailTarget').value=''
+  const s=document.getElementById('mailSuccess'); s.classList.add('show'); setTimeout(()=>s.classList.remove('show'),3000)
+}
+
+// BROADCAST
+window.sendBroadcast = async()=>{
+  const title=document.getElementById('bcTitle').value.trim()
+  const content=document.getElementById('bcContent').value.trim()
+  const link=document.getElementById('bcLink').value.trim()
+  if (!title||!content){showToast('Isi judul dan pesan');return}
+  if (!confirm(`Broadcast ke ${allUsers.length} pengguna?`)) return
+  const btn=document.getElementById('bcBtn'); btn.disabled=true; btn.textContent='Mengirim...'
+  const rows=allUsers.map(u=>({user_id:u.id,title,content,link:link||null}))
+  for (let i=0;i<rows.length;i+=50) await supabase.from('mailbox').insert(rows.slice(i,i+50))
+  btn.disabled=false; btn.textContent='📢 Kirim ke Semua'
+  document.getElementById('bcTitle').value=''
+  document.getElementById('bcContent').value=''
+  document.getElementById('bcLink').value=''
+  const s=document.getElementById('bcSuccess'); s.classList.add('show'); setTimeout(()=>s.classList.remove('show'),3000)
+  showToast(`✅ Terkirim ke ${allUsers.length} pengguna`)
+}
+
+function subscribeAppeals() {
+  supabase.channel('appeals-watch').on('postgres_changes',{event:'INSERT',schema:'public',table:'appeals'},()=>{
+    loadStats(); showToast('📝 Banding baru masuk!')
+    loadDashboard()
+  }).subscribe()
+}
+
+init()
+</script>
+</body>
+</html>

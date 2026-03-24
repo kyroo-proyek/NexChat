@@ -349,6 +349,52 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;displ
 .lightbox.open{display:flex;}
 .lightbox img{max-width:92vw;max-height:92vh;border-radius:8px;}
 
+/* ══════════════════════════════════════════
+   NOTIFIKASI IN-APP
+══════════════════════════════════════════ */
+.notif-container{position:fixed;top:16px;right:16px;display:flex;flex-direction:column;gap:10px;z-index:9999;pointer-events:none;}
+.notif-card{
+  display:flex;align-items:center;gap:12px;
+  background:#1f2c34;border:1px solid #2a3942;
+  border-radius:14px;padding:12px 16px;
+  min-width:280px;max-width:340px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.5);
+  pointer-events:all;cursor:pointer;
+  animation:notifIn .3s ease;
+  transition:opacity .3s,transform .3s;
+}
+.notif-card.hide{opacity:0;transform:translateX(20px);}
+@keyframes notifIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.notif-avatar{width:42px;height:42px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;color:var(--accent2);flex-shrink:0;overflow:hidden;position:relative;}
+.notif-avatar img{width:100%;height:100%;object-fit:cover;}
+.notif-avatar-badge{position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;background:var(--accent2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;border:2px solid #1f2c34;}
+.notif-body{flex:1;min-width:0;}
+.notif-app{font-size:10px;color:var(--accent2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;}
+.notif-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.notif-msg{font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+.notif-time{font-size:10px;color:var(--text-muted);flex-shrink:0;align-self:flex-start;margin-top:2px;}
+.notif-close{width:20px;height:20px;border-radius:50%;background:var(--surface3);border:none;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;transition:.15s;}
+.notif-close:hover{background:var(--danger);color:#fff;}
+
+/* NOTIF PERMISSION BANNER */
+.notif-banner{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:#1f2c34;border:1px solid var(--accent);
+  border-radius:14px;padding:14px 20px;
+  display:flex;align-items:center;gap:12px;
+  z-index:500;box-shadow:0 8px 24px rgba(0,0,0,.4);
+  animation:slideUp .3s ease;max-width:360px;
+}
+@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.notif-banner-text{flex:1;font-size:13px;line-height:1.4;}
+.notif-banner-text strong{color:var(--accent2);}
+.notif-allow-btn{padding:8px 16px;border-radius:8px;background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.2s;}
+.notif-allow-btn:hover{background:var(--accent2);}
+.notif-dismiss-btn{padding:8px;border-radius:8px;background:transparent;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;flex-shrink:0;}
+
+/* UNREAD BADGE DI TITLE */
+.chat-item .unread-count{background:var(--accent2);color:#000;}
+
 /* TOAST */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--border);padding:10px 20px;border-radius:20px;font-size:13px;z-index:1000;opacity:0;pointer-events:none;transition:.3s;white-space:nowrap;}
 .toast.show{opacity:1;}
@@ -661,6 +707,17 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;displ
   </div>
 </div>
 
+<!-- NOTIFIKASI CONTAINER -->
+<div class="notif-container" id="notifContainer"></div>
+
+<!-- NOTIF PERMISSION BANNER -->
+<div class="notif-banner" id="notifBanner" style="display:none">
+  <span style="font-size:24px">🔔</span>
+  <div class="notif-banner-text"><strong>Aktifkan Notifikasi</strong><br>Terima notifikasi saat ada pesan masuk</div>
+  <button class="notif-allow-btn" onclick="requestNotifPermission()">Aktifkan</button>
+  <button class="notif-dismiss-btn" onclick="dismissNotifBanner()">✕</button>
+</div>
+
 <!-- LIGHTBOX -->
 <div class="lightbox" id="lightbox" onclick="document.getElementById('lightbox').classList.remove('open')">
   <img id="lightboxImg" src="">
@@ -790,6 +847,7 @@ async function loadProfile(uid) {
 // ── START ──────────────────────────────────────────────────────
 async function startApp() {
   updateSidebarUI()
+  initNotifications()
   await loadChats()
   await loadMailbox()
   await loadChannels()
@@ -1252,14 +1310,214 @@ function subscribeProfileChanges() {
     }).subscribe()
 }
 
+// ── NOTIFICATION SYSTEM ────────────────────────────────────────
+let notifSound = null
+let unreadCounts = {} // chatId -> count
+
+function initNotifications() {
+  // Buat audio notifikasi (beep sederhana via AudioContext)
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext
+    if (AudioCtx) {
+      const ctx = new AudioCtx()
+      notifSound = () => {
+        try {
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.connect(gain); gain.connect(ctx.destination)
+          osc.frequency.setValueAtTime(880, ctx.currentTime)
+          osc.frequency.setValueAtTime(660, ctx.currentTime+0.1)
+          gain.gain.setValueAtTime(0.3, ctx.currentTime)
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.3)
+          osc.start(ctx.currentTime); osc.stop(ctx.currentTime+0.3)
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  // Cek permission notifikasi browser
+  if ('Notification' in window) {
+    if (Notification.permission === 'default') {
+      // Tampilkan banner setelah 3 detik
+      setTimeout(() => {
+        document.getElementById('notifBanner').style.display = 'flex'
+      }, 3000)
+    }
+  }
+}
+
+window.requestNotifPermission = async () => {
+  dismissNotifBanner()
+  const perm = await Notification.requestPermission()
+  if (perm === 'granted') showInAppNotif('NexWA','🔔','Notifikasi berhasil diaktifkan!',null)
+}
+
+window.dismissNotifBanner = () => {
+  document.getElementById('notifBanner').style.display = 'none'
+  localStorage.setItem('nw_notif_dismissed','1')
+}
+
+function showInAppNotif(name, avatar, message, chatData) {
+  const container = document.getElementById('notifContainer')
+  const card = document.createElement('div')
+  card.className = 'notif-card'
+
+  const avatarHTML = typeof avatar === 'string' && avatar.startsWith('http')
+    ? `<img src="${avatar}">`
+    : `<span>${avatar}</span>`
+
+  const now = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})
+
+  card.innerHTML = `
+    <div class="notif-avatar">
+      ${avatarHTML}
+      <div class="notif-avatar-badge">💬</div>
+    </div>
+    <div class="notif-body">
+      <div class="notif-app">NexWA · Pesan Baru</div>
+      <div class="notif-name">${esc(name)}</div>
+      <div class="notif-msg">${esc(message)}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+      <div class="notif-time">${now}</div>
+      <button class="notif-close" onclick="this.closest('.notif-card').remove()">✕</button>
+    </div>`
+
+  // Klik notif → buka chat
+  card.onclick = e => {
+    if (e.target.classList.contains('notif-close')) return
+    if (chatData) {
+      openChat(chatData.chatId, chatData.other)
+    }
+    card.remove()
+  }
+
+  container.appendChild(card)
+
+  // Auto hapus setelah 5 detik
+  setTimeout(() => {
+    card.classList.add('hide')
+    setTimeout(() => card.remove(), 300)
+  }, 5000)
+
+  // Mainkan suara
+  if (notifSound) notifSound()
+}
+
+function sendBrowserNotif(title, body, icon) {
+  if (Notification.permission !== 'granted') return
+  if (document.visibilityState === 'visible') return // sudah ada in-app notif
+  try {
+    const n = new Notification(title, {
+      body,
+      icon: icon || '/favicon.ico',
+      badge: '/favicon.ico',
+      tag: 'nexwa-msg',
+      renotify: true
+    })
+    n.onclick = () => { window.focus(); n.close() }
+    setTimeout(() => n.close(), 5000)
+  } catch(e) {}
+}
+
+function updateTabTitle(count) {
+  if (count > 0) {
+    document.title = `(${count}) NexWA`
+  } else {
+    document.title = 'NexWA'
+  }
+}
+
+// Update favicon dengan badge merah
+function updateFavicon(hasUnread) {
+  const link = document.querySelector("link[rel*='icon']") || document.createElement('link')
+  link.type = 'image/svg+xml'
+  link.rel = 'shortcut icon'
+  if (hasUnread) {
+    link.href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>💬</text><circle cx='80' cy='20' r='18' fill='%23f15c6d'/></svg>`
+  } else {
+    link.href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>💬</text></svg>`
+  }
+  document.head.appendChild(link)
+}
+
+function getTotalUnread() {
+  return Object.values(unreadCounts).reduce((a,b)=>a+b,0)
+}
+
+// ── SUBSCRIBE REALTIME ─────────────────────────────────────────
 function subscribeRealtime() {
   // Subscribe to new chats
-  supabase.channel('chats-watch').on('postgres_changes',{event:'INSERT',schema:'public',table:'chats'},()=>loadChats())
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'chats'},()=>loadChats()).subscribe()
+  supabase.channel('chats-watch')
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'chats'},()=>loadChats())
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'chats'},()=>loadChats())
+    .subscribe()
+
+  // Subscribe SEMUA pesan masuk untuk notifikasi
+  supabase.channel('all-msgs-notif')
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},async p=>{
+      const msg = p.new
+      // Hanya proses pesan yang dikirim ke kita (bukan dari kita)
+      if (msg.sender_id === ME.id) return
+
+      // Cek apakah chat ini milik kita
+      const myChat = chats.find(c=>c.id===msg.chat_id)
+      if (!myChat) { await loadChats(); return }
+
+      const other = getOtherUser(myChat)
+      const senderName = getContactName(other?.id, other?.display_name) || other?.username || 'Pengguna'
+      const msgPreview = msg.deleted ? '🚫 Pesan dihapus'
+        : msg.file_type === 'image' ? '🖼️ Foto'
+        : msg.file_type === 'video' ? '🎬 Video'
+        : msg.file_type === 'audio' ? '🎵 Audio'
+        : msg.file_type === 'document' ? '📄 '+( msg.file_name||'Dokumen')
+        : msg.content || 'Pesan baru'
+
+      // Tambah unread count
+      if (activeChat?.chat_id !== msg.chat_id) {
+        unreadCounts[msg.chat_id] = (unreadCounts[msg.chat_id]||0) + 1
+        const total = getTotalUnread()
+        updateTabTitle(total)
+        updateFavicon(total > 0)
+
+        // Tampilkan in-app notif
+        showInAppNotif(
+          senderName,
+          other?.avatar_url || senderName[0].toUpperCase(),
+          msgPreview,
+          { chatId: msg.chat_id, other }
+        )
+
+        // Browser notif (saat tab tidak aktif)
+        sendBrowserNotif(senderName, msgPreview, other?.avatar_url)
+      }
+
+      // Reload chat list untuk update preview
+      loadChats()
+    })
+    .subscribe()
+
   // Subscribe mailbox
-  supabase.channel('mailbox-watch').on('postgres_changes',{event:'INSERT',schema:'public',table:'mailbox',filter:`user_id=eq.${ME.id}`},p=>{
-    loadMailbox(); showToast('📬 Pesan baru di Kotak Masuk')
-  }).subscribe()
+  supabase.channel('mailbox-watch')
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'mailbox',filter:`user_id=eq.${ME.id}`},p=>{
+      loadMailbox()
+      showInAppNotif('NexWA','📬', p.new.title||'Pesan baru di Kotak Masuk', null)
+      sendBrowserNotif('NexWA — Kotak Masuk', p.new.title||'Pesan baru')
+    })
+    .subscribe()
+}
+
+// Reset unread saat buka chat
+const _origOpenChat = openChat
+async function openChat(chatId, other) {
+  // Reset unread count untuk chat ini
+  if (unreadCounts[chatId]) {
+    delete unreadCounts[chatId]
+    const total = getTotalUnread()
+    updateTabTitle(total)
+    updateFavicon(total > 0)
+  }
+  await _origOpenChat(chatId, other)
 }
 
 // ── MAILBOX ────────────────────────────────────────────────────

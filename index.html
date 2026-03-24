@@ -787,60 +787,125 @@ window.switchAuthTab = tab => {
 }
 
 window.handleAuth = async () => {
-  const phone = (document.getElementById('countryCode').value.trim()+document.getElementById('authPhone').value.trim()).replace(/\s/g,'')
-  const pass  = document.getElementById('authPass').value
-  const err   = document.getElementById('authErr')
+  const btn    = document.getElementById('authBtn')
+  const rawPhone = document.getElementById('authPhone').value.trim()
+  const code   = document.getElementById('countryCode').value.trim()
+  const pass   = document.getElementById('authPass').value
+  const err    = document.getElementById('authErr')
   err.textContent = ''
-  if (!phone||!pass) { err.textContent='Isi nomor telepon & password'; return }
+
+  if (!rawPhone || !pass) { err.textContent = 'Isi nomor telepon & password'; return }
+
+  // Format nomor: hilangkan leading 0 lalu gabung dengan kode negara
+  const cleanPhone = rawPhone.replace(/^0+/, '')
+  const phone = code + cleanPhone
+  const email = phone.replace('+','') + '@nexwa.app'
+
+  btn.disabled = true
+  btn.textContent = '⏳ Memproses...'
 
   const isLogin = document.getElementById('tabLogin').classList.contains('active')
-  const email   = phone.replace('+','')+'@nexwa.app'
 
-  if (isLogin) {
-    const {data,error} = await supabase.auth.signInWithPassword({email,password:pass})
-    if (error) { err.textContent='Nomor atau password salah'; return }
-    await loadProfile(data.user.id)
-  } else {
-    const name     = document.getElementById('regName').value.trim()
-    const username = document.getElementById('regUsername').value.trim().replace('@','').toLowerCase()
-    if (!name||!username) { err.textContent='Isi nama dan username'; return }
-    // Cek username unik
-    const {data:ex} = await supabase.from('profiles').select('id').eq('username',username).maybeSingle()
-    if (ex) { err.textContent='Username sudah dipakai'; return }
+  try {
+    if (isLogin) {
+      // ── LOGIN ──
+      const {data, error} = await supabase.auth.signInWithPassword({email, password:pass})
+      if (error) {
+        if (error.message.includes('Email not confirmed')) {
+          // Paksa verifikasi lewat SQL — hint ke user
+          err.textContent = 'Email belum terverifikasi. Hubungi admin atau coba daftar ulang.'
+        } else {
+          err.textContent = 'Nomor atau password salah'
+        }
+        return
+      }
+      await loadProfile(data.user.id)
 
-    const {data,error} = await supabase.auth.signUp({email,password:pass})
-    if (error) { err.textContent=error.message; return }
+    } else {
+      // ── DAFTAR ──
+      const name     = document.getElementById('regName').value.trim()
+      const username = document.getElementById('regUsername').value.trim().replace('@','').replace(/\s/g,'').toLowerCase()
+      if (!name)     { err.textContent = 'Isi nama lengkap'; return }
+      if (!username) { err.textContent = 'Isi username'; return }
+      if (username.length < 3) { err.textContent = 'Username minimal 3 karakter'; return }
 
-    await supabase.from('profiles').upsert({
-      id:data.user.id, phone, username, display_name:name,
-      bio:'', role:'user', banned:false
-    })
-    // Verifikasi otomatis
-    await supabase.rpc || await supabase.from('profiles').select('id').eq('id',data.user.id)
-    await loadProfile(data.user.id)
+      // Cek username unik
+      const {data:ex} = await supabase.from('profiles').select('id').eq('username',username).maybeSingle()
+      if (ex) { err.textContent = 'Username sudah dipakai, coba yang lain'; return }
+
+      // Cek nomor sudah terdaftar
+      const {data:ph} = await supabase.from('profiles').select('id').eq('phone',phone).maybeSingle()
+      if (ph) { err.textContent = 'Nomor sudah terdaftar, silakan login'; return }
+
+      const {data, error} = await supabase.auth.signUp({email, password:pass})
+      if (error) { err.textContent = error.message; return }
+      if (!data?.user) { err.textContent = 'Gagal membuat akun, coba lagi'; return }
+
+      // Buat profile
+      const {error:profErr} = await supabase.from('profiles').upsert({
+        id: data.user.id,
+        phone, username,
+        display_name: name,
+        bio: '',
+        role: 'user',
+        banned: false
+      })
+      if (profErr) { err.textContent = 'Gagal simpan profil: '+profErr.message; return }
+
+      // Verifikasi email otomatis via update
+      await supabase.auth.updateUser({data:{phone}})
+
+      await loadProfile(data.user.id)
+    }
+  } catch(e) {
+    err.textContent = 'Terjadi kesalahan: '+e.message
+  } finally {
+    btn.disabled = false
+    btn.textContent = isLogin?'Masuk':'Daftar'
   }
 }
+
+// Enter key di input auth
+document.addEventListener('DOMContentLoaded', () => {
+  ['authPhone','authPass','regName','regUsername'].forEach(id => {
+    const el = document.getElementById(id)
+    if (el) el.addEventListener('keydown', e => { if (e.key==='Enter') handleAuth() })
+  })
+})
 
 async function init() {
   const {data:{session}} = await supabase.auth.getSession()
   if (session) await loadProfile(session.user.id)
 }
 
-async function loadProfile(uid) {
-  let {data:prof} = await supabase.from('profiles').select('*').eq('id',uid).maybeSingle()
-  if (!prof) {
-    // Profile belum ada
-    setTimeout(()=>loadProfile(uid), 1000); return
+async function loadProfile(uid, retries=0) {
+  if (retries > 5) {
+    // Profile tidak ditemukan setelah 5x, minta login ulang
+    document.getElementById('authErr').textContent = 'Gagal memuat profil, coba login ulang'
+    await supabase.auth.signOut()
+    location.reload()
+    return
   }
+
+  const {data:prof, error} = await supabase.from('profiles').select('*').eq('id',uid).maybeSingle()
+
+  if (!prof) {
+    // Profile belum ada (baru daftar), tunggu sebentar lalu coba lagi
+    setTimeout(()=>loadProfile(uid, retries+1), 800)
+    return
+  }
+
   if (prof.banned) {
-    document.getElementById('authScreen').style.display='none'
+    document.getElementById('authScreen').style.display = 'none'
     document.getElementById('bannedScreen').classList.add('show')
     document.getElementById('bannedReason').textContent = 'Alasan: '+(prof.banned_reason||'Pelanggaran S&K')
-    ME = prof; return
+    ME = prof
+    return
   }
+
   ME = prof
-  document.getElementById('authScreen').style.display='none'
-  document.getElementById('app').style.display='flex'
+  document.getElementById('authScreen').style.display = 'none'
+  document.getElementById('app').style.display = 'flex'
   startApp()
 }
 
@@ -922,52 +987,6 @@ function getOtherUser(chat) {
 window.filterChats = () => {
   const q = document.getElementById('searchChats').value
   renderChatList(q)
-}
-
-// ── OPEN CHAT ──────────────────────────────────────────────────
-async function openChat(chatId, otherUser) {
-  if (!otherUser) return
-  activeChat = {chat_id:chatId, other:otherUser}
-  document.getElementById('chatEmpty').style.display='none'
-  document.getElementById('chatMain').style.display='flex'
-  document.getElementById('channelView').style.display='none'
-
-  const name = getContactName(otherUser.id, otherUser.display_name)||otherUser.username||otherUser.phone
-  const ha = document.getElementById('chatHeaderAvatar')
-  if (otherUser.avatar_url) ha.innerHTML=`<img src="${otherUser.avatar_url}">`
-  else ha.textContent = name[0].toUpperCase()
-  document.getElementById('chatHeaderName').textContent = name
-  document.getElementById('chatHeaderStatus').textContent = '@'+(otherUser.username||otherUser.phone)
-  document.getElementById('chatMain').style.flexDirection='column'
-
-  renderChatList()
-  await loadMessages(chatId)
-
-  // Subscribe messages
-  if (msgChannel) await supabase.removeChannel(msgChannel)
-  if (typingChannel) await supabase.removeChannel(typingChannel)
-
-  msgChannel = supabase.channel('msgs-'+chatId)
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`chat_id=eq.${chatId}`},p=>{
-      if (!document.getElementById('msg-'+p.new.id)) { renderMsg(p.new); scrollBottom() }
-    })
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages',filter:`chat_id=eq.${chatId}`},p=>{
-      const el=document.getElementById('msg-'+p.new.id); if(el) el.outerHTML=buildMsgHTML(p.new)
-    })
-    .on('postgres_changes',{event:'DELETE',schema:'public',table:'messages',filter:`chat_id=eq.${chatId}`},p=>{
-      const el=document.getElementById('msg-'+p.old.id); if(el) el.remove()
-    })
-    .subscribe()
-
-  typingChannel = supabase.channel('typing-'+chatId)
-    .on('broadcast',{event:'typing'},p=>{
-      if (p.payload?.from!==ME.id) {
-        document.getElementById('typingIndicator').classList.add('show')
-        clearTimeout(typingTimer)
-        typingTimer=setTimeout(()=>document.getElementById('typingIndicator').classList.remove('show'),3000)
-        scrollBottom()
-      }
-    }).subscribe()
 }
 
 async function loadMessages(chatId) {
@@ -1508,7 +1527,6 @@ function subscribeRealtime() {
 }
 
 // Reset unread saat buka chat
-const _origOpenChat = openChat
 async function openChat(chatId, other) {
   // Reset unread count untuk chat ini
   if (unreadCounts[chatId]) {
@@ -1517,7 +1535,50 @@ async function openChat(chatId, other) {
     updateTabTitle(total)
     updateFavicon(total > 0)
   }
-  await _origOpenChat(chatId, other)
+
+  if (!other) return
+  activeChat = {chat_id:chatId, other}
+  document.getElementById('chatEmpty').style.display='none'
+  document.getElementById('chatMain').style.display='flex'
+  document.getElementById('channelView').style.display='none'
+
+  const name = getContactName(other.id, other.display_name)||other.username||other.phone||'User'
+  const ha = document.getElementById('chatHeaderAvatar')
+  if (other.avatar_url) ha.innerHTML=`<img src="${other.avatar_url}">`
+  else ha.textContent = name[0].toUpperCase()
+  document.getElementById('chatHeaderName').textContent = name
+  document.getElementById('chatHeaderStatus').textContent = '@'+(other.username||other.phone||'')
+  document.getElementById('chatMain').style.flexDirection='column'
+
+  renderChatList()
+  await loadMessages(chatId)
+
+  // Subscribe messages
+  if (msgChannel) await supabase.removeChannel(msgChannel)
+  if (typingChannel) await supabase.removeChannel(typingChannel)
+
+  msgChannel = supabase.channel('msgs-'+chatId)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`chat_id=eq.${chatId}`},p=>{
+      if (!document.getElementById('msg-'+p.new.id)) { renderMsg(p.new); scrollBottom() }
+    })
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages',filter:`chat_id=eq.${chatId}`},p=>{
+      const el=document.getElementById('msg-'+p.new.id)
+      if (el) el.innerHTML=buildMsgHTML(p.new)
+    })
+    .on('postgres_changes',{event:'DELETE',schema:'public',table:'messages',filter:`chat_id=eq.${chatId}`},p=>{
+      const el=document.getElementById('msg-'+p.old.id); if(el) el.remove()
+    })
+    .subscribe()
+
+  typingChannel = supabase.channel('typing-'+chatId)
+    .on('broadcast',{event:'typing'},p=>{
+      if (p.payload?.from!==ME.id) {
+        document.getElementById('typingIndicator').classList.add('show')
+        clearTimeout(typingTimer)
+        typingTimer=setTimeout(()=>document.getElementById('typingIndicator').classList.remove('show'),3000)
+        scrollBottom()
+      }
+    }).subscribe()
 }
 
 // ── MAILBOX ────────────────────────────────────────────────────
